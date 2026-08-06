@@ -1,0 +1,24 @@
+{
+  "name": "apiforge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local API generator — connect a database, pick tables, forge production-ready APIs",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @apiforge/server\" \"npm run dev -w @apiforge/web\"",
+    "build": "npm run build -w @apiforge/shared && npm run build -w @apiforge/db-introspect && npm run build -w @apiforge/codegen && npm run build -w @apiforge/server && npm run build -w @apiforge/web",
+    "typecheck": "npm run typecheck -w @apiforge/shared && npm run typecheck -w @apiforge/db-introspect && npm run typecheck -w @apiforge/codegen && npm run typecheck -w @apiforge/server && npm run typecheck -w @apiforge/web",
+    "lint": "npm run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

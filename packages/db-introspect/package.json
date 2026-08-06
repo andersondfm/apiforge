@@ -1,0 +1,31 @@
+{
+  "name": "@apiforge/db-introspect",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@apiforge/shared": "*",
+    "better-sqlite3": "^11.8.1",
+    "mssql": "^11.0.1",
+    "mysql2": "^3.12.0",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/mssql": "^9.1.5",
+    "@types/pg": "^8.11.11"
+  }
+}
