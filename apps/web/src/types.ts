@@ -193,6 +193,8 @@ export function defaultPort(engine: DbEngine): number {
       return 1433;
     case 'sqlite':
       return 0;
+    default:
+      throw new Error(`Unsupported engine: ${engine}`);
   }
 }
 

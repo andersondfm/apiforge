@@ -27,6 +27,8 @@ export function dbPackageRef(engine: DbEngine): { include: string; package: stri
       return { include: 'Microsoft.Data.SqlClient', package: 'Microsoft.Data.SqlClient', version: '5.2.2' };
     case 'sqlite':
       return { include: 'Microsoft.Data.Sqlite', package: 'Microsoft.Data.Sqlite', version: '8.0.11' };
+    default:
+      throw new Error(`Unsupported engine: ${engine}`);
   }
 }
 
@@ -77,6 +79,8 @@ export function connectionString(config: GenerateConfig): string {
       return `Server=${c.host || 'localhost'},${c.port || 1433};Database=${c.database || 'mydb'};User Id=${c.username || 'sa'};Password=${c.password || 'Your_password123'};TrustServerCertificate=True`;
     case 'sqlite':
       return `Data Source=${c.filePath || './data/app.db'}`;
+    default:
+      throw new Error(`Unsupported engine: ${c.engine}`);
   }
 }
 

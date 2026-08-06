@@ -24,6 +24,8 @@ export function dbDriverPackage(engine: DbEngine): { dep: string; version: strin
       return { dep: 'mssql', version: '^11.0.1' };
     case 'sqlite':
       return { dep: 'better-sqlite3', version: '^11.8.1', types: '@types/better-sqlite3' };
+    default:
+      throw new Error(`Unsupported engine: ${engine}`);
   }
 }
 

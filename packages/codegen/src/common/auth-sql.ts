@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS ${table} (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
+    default:
+      throw new Error(`Unsupported engine: ${config.connection.engine}`);
   }
 }
 

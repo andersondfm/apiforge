@@ -14,6 +14,8 @@ function connectionLine(config: GenerateConfig): string {
       return `DATABASE_URL=Server=${c.host || 'localhost'},${c.port || 1433};Database=${c.database || 'mydb'};User Id=${c.username || 'sa'};Password=${c.password || 'Your_password123'};TrustServerCertificate=True`;
     case 'sqlite':
       return `DATABASE_URL=${c.filePath || './data/app.db'}`;
+    default:
+      throw new Error(`Unsupported engine: ${c.engine}`);
   }
 }
 
