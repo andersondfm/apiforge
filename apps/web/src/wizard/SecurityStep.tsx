@@ -1,4 +1,5 @@
 import { StepNav } from '../components/StepNav';
+import { ExplainPanel } from '../components/ExplainPanel';
 import type { CorsMode, SecurityConfig } from '../types';
 
 interface SecurityStepProps {
@@ -21,6 +22,29 @@ export function SecurityStep({ security, onChange, onBack, onNext }: SecuritySte
       <p className="mt-2 text-[var(--muted)]">
         CORS, IP allowlists, rate limits, and headers — dialed before codegen.
       </p>
+
+      <ExplainPanel title="Para que serve cada controle" defaultOpen>
+        <p>
+          <strong className="text-[var(--fg)]">CORS</strong> — quem (qual site/app) pode chamar a
+          API no browser. Em produção, preferir allowlist com seus frontends.
+        </p>
+        <p>
+          <strong className="text-[var(--fg)]">Rate limit</strong> — limita requests por minuto para
+          frear abuso e bots.
+        </p>
+        <p>
+          <strong className="text-[var(--fg)]">API key</strong> — chave estática no header (além ou
+          no lugar do JWT) para clientes server-to-server.
+        </p>
+        <p>
+          <strong className="text-[var(--fg)]">IP allowlist</strong> — só IPs listados passam;
+          vazio = todos.
+        </p>
+        <p>
+          <strong className="text-[var(--fg)]">Helmet</strong> — headers HTTP que reduzem XSS,
+          clickjacking e vazamento de metadados.
+        </p>
+      </ExplainPanel>
 
       <div className="mt-8 space-y-8">
         <div>

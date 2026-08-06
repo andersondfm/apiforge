@@ -19,7 +19,7 @@ Most API generators dump boilerplate and leave security as an afterthought. ApiF
 
 - **Local-first** — SQLite store on disk; connection secrets encrypted with AES-256-GCM
 - **Multi-engine** — PostgreSQL, MySQL, SQL Server, SQLite
-- **Four stacks** — .NET 8 Minimal API, .NET Web API Controllers, Express, Fastify
+- **Four stacks** — .NET 10 Minimal API, .NET Web API Controllers, Express 5, Fastify 5
 - **Auth that thinks** — detects `username`/`login` + `password` tables, or generates a `users` table + JWT endpoints
 - **Security knobs** — CORS (all / origins), IP allowlist, rate limit, optional API key, Helmet
 - **Swagger by default** — OpenAPI UI in every generated project
@@ -132,7 +132,7 @@ ApiForge never phones home. Introspection and generation run on `localhost`. Sav
 
 - **UI:** React 19, Vite, Tailwind, Framer Motion
 - **Tool API:** Fastify, better-sqlite3, archiver
-- **Codegen:** TypeScript programmatic templates (.NET 8 + Node)
+- **Codegen:** TypeScript programmatic templates (.NET 10 + Node)
 - **Drivers:** `pg`, `mysql2`, `mssql`, `better-sqlite3`
 
 ## Contributing

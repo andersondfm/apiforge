@@ -1,5 +1,5 @@
 import type { EndpointPreview, GenerateConfig } from '@apiforge/shared';
-import { routeName, selectedTables } from './helpers.js';
+import { defaultOperations, routeName, selectedTables } from './helpers.js';
 
 export function buildEndpoints(config: GenerateConfig): EndpointPreview[] {
   const endpoints: EndpointPreview[] = [];
@@ -25,38 +25,48 @@ export function buildEndpoints(config: GenerateConfig): EndpointPreview[] {
   for (const table of selectedTables(config)) {
     const base = `/${routeName(table)}`;
     const label = table.name;
-    endpoints.push(
-      {
+    const ops = defaultOperations(table);
+
+    if (ops.list) {
+      endpoints.push({
         method: 'GET',
         path: base,
-        description: `List ${label} with pagination`,
+        description: `List ${label}${config.includePagination ? ' with pagination' : ''}`,
         authRequired,
-      },
-      {
+      });
+    }
+    if (ops.get) {
+      endpoints.push({
         method: 'GET',
         path: `${base}/:id`,
         description: `Get a single ${label} by primary key`,
         authRequired,
-      },
-      {
+      });
+    }
+    if (ops.create) {
+      endpoints.push({
         method: 'POST',
         path: base,
         description: `Create a new ${label}`,
         authRequired,
-      },
-      {
+      });
+    }
+    if (ops.update) {
+      endpoints.push({
         method: 'PUT',
         path: `${base}/:id`,
         description: `Update an existing ${label}`,
         authRequired,
-      },
-      {
+      });
+    }
+    if (ops.delete) {
+      endpoints.push({
         method: 'DELETE',
         path: `${base}/:id`,
         description: `Delete a ${label}`,
         authRequired,
-      },
-    );
+      });
+    }
   }
 
   return endpoints;

@@ -219,3 +219,22 @@ textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
+/* React Flow — match ApiForge dark forge palette */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-radius: 8px;
+  --xy-controls-button-background-color: var(--bg-elevated);
+  --xy-controls-button-color: var(--muted);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-button-background-color-hover: var(--bg-soft);
+  --xy-minimap-background-color: var(--bg-elevated);
+  --xy-minimap-mask-background-color: rgba(12, 14, 20, 0.7);
+  --xy-minimap-node-background-color: var(--cyan);
+  background: transparent !important;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+

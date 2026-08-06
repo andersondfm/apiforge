@@ -4,45 +4,29 @@ import { ProgressRail, type WizardStepMeta } from '../components/ProgressRail';
 import { detectAuth, introspect, preview as previewApi } from '../lib/api';
 import {
   createInitialConfig,
+  hasAnyOperation,
   type ConnectionConfig,
   type DetectedAuthTable,
   type GenerateConfig,
   type GeneratePreview,
-  type TableMeta,
 } from '../types';
 import { AuthStep } from '../wizard/AuthStep';
-import { ColumnsStep } from '../wizard/ColumnsStep';
 import { ConnectStep } from '../wizard/ConnectStep';
 import { GenerateStep } from '../wizard/GenerateStep';
 import { PreviewStep } from '../wizard/PreviewStep';
 import { SecurityStep } from '../wizard/SecurityStep';
 import { StackStep } from '../wizard/StackStep';
-import { TablesStep } from '../wizard/TablesStep';
+import { SchemaStep, prepareSchemaTables } from '../wizard/schema/SchemaStep';
 
 const STEPS: WizardStepMeta[] = [
   { id: 'connect', label: 'Connect' },
-  { id: 'tables', label: 'Tables' },
-  { id: 'columns', label: 'Columns' },
+  { id: 'schema', label: 'Schema' },
   { id: 'auth', label: 'Auth' },
   { id: 'security', label: 'Security' },
   { id: 'stack', label: 'Stack' },
   { id: 'preview', label: 'Preview' },
   { id: 'generate', label: 'Generate' },
 ];
-
-function prepareTables(tables: TableMeta[]): TableMeta[] {
-  return tables.map((t) => ({
-    ...t,
-    selected: t.selected ?? true,
-    columns: t.columns.map((c) => ({
-      ...c,
-      selected: c.selected ?? true,
-      sensitive:
-        c.sensitive ??
-        /password|secret|token|hash|ssn|salt/i.test(c.name),
-    })),
-  }));
-}
 
 export function Wizard() {
   const [step, setStep] = useState(0);
@@ -55,6 +39,7 @@ export function Wizard() {
   const [error, setError] = useState<string | null>(null);
 
   const go = (index: number) => setStep(Math.max(0, Math.min(STEPS.length - 1, index)));
+  const isSchema = step === 1;
 
   const patchConfig = useCallback((partial: Partial<GenerateConfig>) => {
     setConfig((prev) => ({ ...prev, ...partial }));
@@ -64,7 +49,7 @@ export function Wizard() {
     setConfig((prev) => ({ ...prev, connection }));
   }, []);
 
-  const setTables = useCallback((tables: TableMeta[]) => {
+  const setTables = useCallback((tables: GenerateConfig['tables']) => {
     setConfig((prev) => ({ ...prev, tables }));
   }, []);
 
@@ -73,11 +58,11 @@ export function Wizard() {
     setError(null);
     try {
       const result = await introspect(config.connection);
-      const tables = prepareTables(result.tables);
+      const tables = prepareSchemaTables(result.tables);
       setConfig((prev) => ({ ...prev, tables }));
 
       try {
-        const authResult = await detectAuth({ tables });
+        const authResult = await detectAuth({ tables: result.tables });
         setDetectedAuth(authResult.detected);
         if (authResult.detected[0]) {
           const t = authResult.detected[0];
@@ -114,7 +99,7 @@ export function Wizard() {
     try {
       const payload: GenerateConfig = {
         ...config,
-        tables: config.tables.filter((t) => t.selected),
+        tables: config.tables.filter((t) => t.selected !== false && hasAnyOperation(t)),
       };
       const result = await previewApi(payload);
       setPreview(result);
@@ -127,15 +112,21 @@ export function Wizard() {
   }
 
   async function goToPreview() {
-    go(6);
+    go(5);
     await loadPreview();
   }
 
-  const selectedTables = config.tables.filter((t) => t.selected);
+  const selectedTables = config.tables.filter(
+    (t) => t.selected !== false && hasAnyOperation(t),
+  );
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 lg:py-10">
-      <div className="mb-8">
+    <div
+      className={[
+        isSchema ? 'flex min-h-[calc(100vh-3.5rem)] flex-col px-0 py-4 lg:px-5' : 'mx-auto max-w-6xl px-5 py-8 lg:py-10',
+      ].join(' ')}
+    >
+      <div className={['mb-6', isSchema ? 'px-5 lg:px-0' : ''].join(' ')}>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--cyan)]">
           Wizard
         </p>
@@ -145,13 +136,18 @@ export function Wizard() {
       </div>
 
       {error && (
-        <p className="mb-6 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)]">
+        <p className="mb-6 mx-5 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)] lg:mx-0">
           {error}
         </p>
       )}
 
-      <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
-        <aside className="lg:w-56 lg:shrink-0">
+      <div
+        className={[
+          'flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:gap-8',
+          isSchema ? '' : '',
+        ].join(' ')}
+      >
+        <aside className={['shrink-0', isSchema ? 'px-5 lg:w-44 lg:px-0' : 'lg:w-56'].join(' ')}>
           <div className="lg:sticky lg:top-6">
             <div className="mb-3 hidden lg:block">
               <ProgressRail steps={STEPS} current={step} onSelect={go} />
@@ -167,10 +163,11 @@ export function Wizard() {
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <div className={['min-w-0 flex-1', isSchema ? 'flex min-h-0 flex-col' : ''].join(' ')}>
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
+              className={isSchema ? 'flex min-h-0 flex-1 flex-col' : ''}
               initial={{ opacity: 0, x: 16 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -12 }}
@@ -185,63 +182,56 @@ export function Wizard() {
                 />
               )}
               {step === 1 && (
-                <TablesStep
+                <SchemaStep
                   tables={config.tables}
+                  engine={config.connection.engine}
                   onChange={setTables}
                   onBack={() => go(0)}
                   onNext={() => go(2)}
                 />
               )}
               {step === 2 && (
-                <ColumnsStep
-                  tables={config.tables}
-                  onChange={setTables}
+                <AuthStep
+                  auth={config.auth}
+                  detected={detectedAuth}
+                  onChange={(auth) => patchConfig({ auth })}
                   onBack={() => go(1)}
                   onNext={() => go(3)}
                 />
               )}
               {step === 3 && (
-                <AuthStep
-                  auth={config.auth}
-                  detected={detectedAuth}
-                  onChange={(auth) => patchConfig({ auth })}
+                <SecurityStep
+                  security={config.security}
+                  onChange={(security) => patchConfig({ security })}
                   onBack={() => go(2)}
                   onNext={() => go(4)}
                 />
               )}
               {step === 4 && (
-                <SecurityStep
-                  security={config.security}
-                  onChange={(security) => patchConfig({ security })}
-                  onBack={() => go(3)}
-                  onNext={() => go(5)}
-                />
-              )}
-              {step === 5 && (
                 <StackStep
                   config={config}
                   onChange={patchConfig}
-                  onBack={() => go(4)}
+                  onBack={() => go(3)}
                   onNext={() => void goToPreview()}
                 />
               )}
-              {step === 6 && (
+              {step === 5 && (
                 <PreviewStep
                   preview={preview}
                   loading={previewLoading}
                   error={previewError}
-                  onBack={() => go(5)}
-                  onNext={() => go(7)}
+                  onBack={() => go(4)}
+                  onNext={() => go(6)}
                   onRetry={() => void loadPreview()}
                 />
               )}
-              {step === 7 && (
+              {step === 6 && (
                 <GenerateStep
                   config={{
                     ...config,
                     tables: selectedTables,
                   }}
-                  onBack={() => go(6)}
+                  onBack={() => go(5)}
                   onReset={() => {
                     setConfig(createInitialConfig());
                     setDetectedAuth([]);

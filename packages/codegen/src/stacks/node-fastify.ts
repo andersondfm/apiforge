@@ -1,10 +1,12 @@
 import type { GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared';
 import { authSqlFile } from '../common/auth-sql.js';
+import { designedTableSqlFiles } from '../common/designed-sql.js';
 import { dockerFiles } from '../common/docker.js';
 import { envExample } from '../common/env.js';
 import { readmeFile } from '../common/readme.js';
 import {
   camelCase,
+  defaultOperations,
   insertableColumns,
   kebabCase,
   pascalCase,
@@ -239,6 +241,7 @@ function generateTableRouteFastify(config: GenerateConfig, table: TableMeta): Ge
   const selectList = pubs.map((c) => quoteIdent(c.name, engine)).join(', ');
   const insertNames = inserts.map((c) => quoteIdent(c.name, engine)).join(', ');
   const preHandler = config.auth.enabled ? '{ preHandler: [app.authenticate] }' : '{}';
+  const ops = defaultOperations(table);
 
   let insertPlaceholders: string;
   let insertParamsExpr: string;
@@ -353,11 +356,16 @@ ${pubs.map((c) => `    ${camelCase(c.name)}: row['${c.name}'] as ${mapSqlToTs(c.
 }
 
 const routes: FastifyPluginAsync = async (app) => {
-  app.get('/', ${preHandler}, async (request) => {
+${
+  ops.list
+    ? `  app.get('/', ${preHandler}, async (request) => {
 ${listHandler}
   });
-
-  app.get<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
+`
+    : ''
+}${
+  ops.get
+    ? `  app.get<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
     const id = request.params.id;
     const result = await query(\`${getByIdSql}\`, ${getByIdParams});
     if (!result.rows.length) {
@@ -365,13 +373,19 @@ ${listHandler}
     }
     return mapRow(result.rows[0] as Record<string, unknown>);
   });
-
-  app.post('/', ${preHandler}, async (request, reply) => {
+`
+    : ''
+}${
+  ops.create
+    ? `  app.post('/', ${preHandler}, async (request, reply) => {
     const body = request.body as Partial<${entity}>;
 ${createHandler}
   });
-
-  app.put<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
+`
+    : ''
+}${
+  ops.update
+    ? `  app.put<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
     const id = request.params.id;
     const body = request.body as Partial<${entity}>;
     const result = await query(
@@ -384,8 +398,11 @@ ${createHandler}
     const fresh = await query(\`${getByIdSql}\`, ${getByIdParams});
     return fresh.rows[0] ? mapRow(fresh.rows[0] as Record<string, unknown>) : { ok: true };
   });
-
-  app.delete<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
+`
+    : ''
+}${
+  ops.delete
+    ? `  app.delete<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
     const id = request.params.id;
     const result = await query(\`${deleteSql}\`, ${deleteParams});
     if (!result.rowCount) {
@@ -393,7 +410,9 @@ ${createHandler}
     }
     return reply.status(204).send();
   });
-};
+`
+    : ''
+}};
 
 export default routes;
 `,
@@ -509,6 +528,7 @@ export function generateNodeFastify(config: GenerateConfig): GeneratedFile[] {
 
   const sql = authSqlFile(config);
   if (sql) files.push(sql);
+  files.push(...designedTableSqlFiles(config));
 
   files.push(...dockerFiles(config));
   return files;

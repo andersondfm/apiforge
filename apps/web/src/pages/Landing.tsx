@@ -12,7 +12,7 @@ const STEPS = [
   {
     n: '02',
     title: 'Shape',
-    body: 'Pick tables and columns. Mark sensitive fields. Detect auth tables or forge a fresh users model.',
+    body: 'Drag tables onto a visual canvas, pick HTTP methods per table, or design new tables with column types — n8n-style.',
   },
   {
     n: '03',

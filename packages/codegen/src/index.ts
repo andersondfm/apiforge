@@ -10,5 +10,9 @@ export {
   pkColumn,
   routeName,
   sanitizeProjectName,
+  defaultOperations,
+  hasAnyOperation,
+  FULL_OPERATIONS,
+  READ_OPERATIONS,
 } from './helpers.js';
 export { mapSqlToTs, mapSqlToCSharp } from './types-map.js';

@@ -39,12 +39,26 @@ export interface ColumnMeta {
   sensitive?: boolean;
 }
 
+/** Which CRUD HTTP operations to generate for a table. Omitted keys default to true (views: list+get only). */
+export interface TableOperations {
+  list?: boolean;
+  get?: boolean;
+  create?: boolean;
+  update?: boolean;
+  delete?: boolean;
+}
+
 export interface TableMeta {
   schema: string;
   name: string;
   type: 'table' | 'view';
   columns: ColumnMeta[];
   selected?: boolean;
+  /** introspected from DB vs designed in the canvas */
+  source?: 'introspected' | 'designed';
+  operations?: TableOperations;
+  /** Stable canvas node id (designed tables / UI) */
+  id?: string;
 }
 
 export interface ForeignKeyMeta {
@@ -139,8 +153,8 @@ export interface DetectedAuthTable {
 }
 
 export const STACK_LABELS: Record<GeneratedStack, string> = {
-  'net-minimal': '.NET Minimal API',
-  'net-webapi': '.NET Web API (Controllers)',
+  'net-minimal': '.NET 10 Minimal API',
+  'net-webapi': '.NET 10 Web API (Controllers)',
   'node-express': 'Node.js Express',
   'node-fastify': 'Node.js Fastify',
 };

@@ -12,6 +12,12 @@ import {
   updatableColumns,
 } from '../helpers.js';
 import { mapSqlToCSharp } from '../types-map.js';
+import { NET_PACKAGES, NET_TARGET_FRAMEWORK } from '../versions.js';
+
+/** Embed SQL in a C# verbatim string, escaping double-quotes. */
+export function csharpSqlLiteral(sql: string): string {
+  return `@"${sql.replaceAll('"', '""')}"`;
+}
 
 export function netPort(config: GenerateConfig): number {
   return config.port || 5080;
@@ -20,13 +26,21 @@ export function netPort(config: GenerateConfig): number {
 export function dbPackageRef(engine: DbEngine): { include: string; package: string; version: string } {
   switch (engine) {
     case 'postgresql':
-      return { include: 'Npgsql', package: 'Npgsql', version: '8.0.6' };
+      return { include: 'Npgsql', package: 'Npgsql', version: NET_PACKAGES.npgsql };
     case 'mysql':
-      return { include: 'MySqlConnector', package: 'MySqlConnector', version: '2.4.0' };
+      return { include: 'MySqlConnector', package: 'MySqlConnector', version: NET_PACKAGES.mysqlConnector };
     case 'sqlserver':
-      return { include: 'Microsoft.Data.SqlClient', package: 'Microsoft.Data.SqlClient', version: '5.2.2' };
+      return {
+        include: 'Microsoft.Data.SqlClient',
+        package: 'Microsoft.Data.SqlClient',
+        version: NET_PACKAGES.sqlClient,
+      };
     case 'sqlite':
-      return { include: 'Microsoft.Data.Sqlite', package: 'Microsoft.Data.Sqlite', version: '8.0.11' };
+      return {
+        include: 'Microsoft.Data.Sqlite',
+        package: 'Microsoft.Data.Sqlite',
+        version: NET_PACKAGES.sqlite,
+      };
     default:
       throw new Error(`Unsupported engine: ${engine}`);
   }
@@ -37,14 +51,14 @@ export function csprojFile(config: GenerateConfig): GeneratedFile {
   const db = dbPackageRef(config.connection.engine);
   const packages = [
     `    <PackageReference Include="${db.package}" Version="${db.version}" />`,
-    `    <PackageReference Include="Dapper" Version="2.1.35" />`,
-    `    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />`,
+    `    <PackageReference Include="Dapper" Version="${NET_PACKAGES.dapper}" />`,
+    `    <PackageReference Include="Swashbuckle.AspNetCore" Version="${NET_PACKAGES.swashbuckle}" />`,
   ];
   if (config.auth.enabled) {
     packages.push(
-      `    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />`,
-      `    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />`,
-      `    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.3.0" />`,
+      `    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="${NET_PACKAGES.jwtBearer}" />`,
+      `    <PackageReference Include="BCrypt.Net-Next" Version="${NET_PACKAGES.bcrypt}" />`,
+      `    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="${NET_PACKAGES.jwtTokens}" />`,
     );
   }
 
@@ -52,7 +66,7 @@ export function csprojFile(config: GenerateConfig): GeneratedFile {
     path: `${name}.csproj`,
     content: `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>${NET_TARGET_FRAMEWORK}</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>${name}</RootNamespace>
@@ -65,6 +79,39 @@ ${packages.join('\n')}
 `,
     language: 'xml',
   };
+}
+
+export function swaggerServicesSnippet(config: GenerateConfig): string {
+  if (!config.includeSwagger) return '';
+  const security = config.auth.enabled
+    ? `    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    c.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });`
+    : '';
+  return `builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "${config.projectName}", Version = "v1" });
+${security}
+});
+`;
+}
+
+export function swaggerMiddlewareSnippet(config: GenerateConfig): string {
+  if (!config.includeSwagger) return '';
+  return `app.UseSwagger();
+app.UseSwaggerUI();
+`;
 }
 
 export function connectionString(config: GenerateConfig): string {
@@ -215,7 +262,13 @@ export function generateModel(config: GenerateConfig, table: TableMeta): Generat
   const props = cols
     .map((c) => {
       const csType = mapSqlToCSharp(c.dataType, c.isNullable);
-      return `    public ${csType} ${pascalCase(c.name)} { get; set; }`;
+      const init =
+        csType === 'string' || csType === 'string?'
+          ? ' = "";'
+          : csType.endsWith('[]')
+            ? ' = Array.Empty<byte>();'
+            : ' = default!;';
+      return `    public ${csType} ${pascalCase(c.name)} { get; set; }${init}`;
     })
     .join('\n');
 
@@ -499,7 +552,7 @@ public class AuthService
     {
         await using var conn = await _db.OpenConnectionAsync();
         var user = await conn.QuerySingleOrDefaultAsync<AuthUserRow>(
-            @"${findSql}",
+            ${csharpSqlLiteral(findSql)},
             new { Username = req.Username });
         if (user is null) return null;
         if (!BCrypt.Net.BCrypt.Verify(req.Password, user.Password)) return null;
@@ -511,15 +564,15 @@ public class AuthService
     {
         await using var conn = await _db.OpenConnectionAsync();
         var existing = await conn.QuerySingleOrDefaultAsync<AuthUserRow>(
-            @"${findSql}",
+            ${csharpSqlLiteral(findSql)},
             new { Username = req.Username });
         if (existing is not null) return null;
         var hash = BCrypt.Net.BCrypt.HashPassword(req.Password);
         await conn.ExecuteAsync(
-            @"${insertSql}",
+            ${csharpSqlLiteral(insertSql)},
             new { Username = req.Username, Password = hash });
         var user = await conn.QuerySingleAsync<AuthUserRow>(
-            @"${findSql}",
+            ${csharpSqlLiteral(findSql)},
             new { Username = req.Username });
         var token = _jwt.CreateToken(user.Id?.ToString() ?? "", user.Username);
         return new AuthResponse(token, new { id = user.Id, username = user.Username });

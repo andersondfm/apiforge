@@ -39,12 +39,26 @@ export interface ColumnMeta {
   sensitive?: boolean;
 }
 
+/** Which CRUD HTTP operations to generate for a table. Omitted keys default to true (views: list+get only). */
+export interface TableOperations {
+  list?: boolean;
+  get?: boolean;
+  create?: boolean;
+  update?: boolean;
+  delete?: boolean;
+}
+
 export interface TableMeta {
   schema: string;
   name: string;
   type: 'table' | 'view';
   columns: ColumnMeta[];
   selected?: boolean;
+  /** introspected from DB vs designed in the canvas */
+  source?: 'introspected' | 'designed';
+  operations?: TableOperations;
+  /** Stable canvas node id (designed tables / UI) */
+  id?: string;
 }
 
 export interface ForeignKeyMeta {
@@ -147,8 +161,8 @@ export interface SavedConnection {
 }
 
 export const STACK_LABELS: Record<GeneratedStack, string> = {
-  'net-minimal': '.NET Minimal API',
-  'net-webapi': '.NET Web API (Controllers)',
+  'net-minimal': '.NET 10 Minimal API',
+  'net-webapi': '.NET 10 Web API (Controllers)',
   'node-express': 'Node.js Express',
   'node-fastify': 'Node.js Fastify',
 };
@@ -181,6 +195,45 @@ export const DEFAULT_AUTH: AuthConfig = {
   jwtExpiresIn: '24h',
   includeRefreshToken: false,
   includeRegister: true,
+};
+
+export const FULL_OPERATIONS: Required<TableOperations> = {
+  list: true,
+  get: true,
+  create: true,
+  update: true,
+  delete: true,
+};
+
+export const READ_OPERATIONS: Required<TableOperations> = {
+  list: true,
+  get: true,
+  create: false,
+  update: false,
+  delete: false,
+};
+
+export function defaultOperations(table: Pick<TableMeta, 'type' | 'operations'>): Required<TableOperations> {
+  const base = table.type === 'view' ? READ_OPERATIONS : FULL_OPERATIONS;
+  return {
+    list: table.operations?.list ?? base.list,
+    get: table.operations?.get ?? base.get,
+    create: table.operations?.create ?? base.create,
+    update: table.operations?.update ?? base.update,
+    delete: table.operations?.delete ?? base.delete,
+  };
+}
+
+export function hasAnyOperation(table: Pick<TableMeta, 'type' | 'operations'>): boolean {
+  const ops = defaultOperations(table);
+  return ops.list || ops.get || ops.create || ops.update || ops.delete;
+}
+
+export const COLUMN_TYPE_OPTIONS: Record<DbEngine, string[]> = {
+  postgresql: ['SERIAL', 'BIGSERIAL', 'INTEGER', 'BIGINT', 'VARCHAR(255)', 'TEXT', 'BOOLEAN', 'TIMESTAMPTZ', 'UUID', 'NUMERIC', 'JSONB'],
+  mysql: ['INT AUTO_INCREMENT', 'BIGINT', 'VARCHAR(255)', 'TEXT', 'TINYINT(1)', 'DATETIME', 'DECIMAL(18,2)', 'JSON'],
+  sqlserver: ['INT IDENTITY(1,1)', 'BIGINT', 'NVARCHAR(255)', 'NVARCHAR(MAX)', 'BIT', 'DATETIME2', 'UNIQUEIDENTIFIER', 'DECIMAL(18,2)'],
+  sqlite: ['INTEGER', 'TEXT', 'REAL', 'BLOB'],
 };
 
 export function defaultPort(engine: DbEngine): number {

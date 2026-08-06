@@ -67,8 +67,14 @@ If you do not already have a users table, run:
 ${usersCreateSql(config)}\`\`\`
 `
     : ''
-}
----
+}${
+  selectedTables(config).some((t) => t.source === 'designed')
+    ? `## Designed tables
+
+This project includes tables created in the ApiForge canvas. Run the SQL files under \`sql/create-*.sql\` against your database before starting the API.
+`
+    : ''
+}---
 Forged with ApiForge.
 `;
 

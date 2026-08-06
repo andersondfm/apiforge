@@ -1,5 +1,10 @@
 import type { GenerateConfig, GeneratedFile } from '@apiforge/shared';
 import { csharpNamespace, sanitizeProjectName } from '../helpers.js';
+import {
+  DOTNET_DOCKER_RUNTIME,
+  DOTNET_DOCKER_SDK,
+  NODE_DOCKER_IMAGE,
+} from '../versions.js';
 
 export function dockerFiles(config: GenerateConfig): GeneratedFile[] {
   if (!config.includeDocker) return [];
@@ -23,14 +28,14 @@ export function dockerFiles(config: GenerateConfig): GeneratedFile[] {
   if (config.stack.startsWith('node')) {
     files.push({
       path: 'Dockerfile',
-      content: `FROM node:20-alpine AS build
+      content: `FROM ${NODE_DOCKER_IMAGE} AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine
+FROM ${NODE_DOCKER_IMAGE}
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
@@ -45,13 +50,13 @@ CMD ["node", "dist/index.js"]
     const dll = csharpNamespace(config.projectName);
     files.push({
       path: 'Dockerfile',
-      content: `FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+      content: `FROM ${DOTNET_DOCKER_SDK} AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore
 RUN dotnet publish -c Release -o /app
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM ${DOTNET_DOCKER_RUNTIME}
 WORKDIR /app
 COPY --from=build /app .
 EXPOSE ${config.port}

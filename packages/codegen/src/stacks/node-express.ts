@@ -1,9 +1,10 @@
 import type { GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared';
 import { authSqlFile } from '../common/auth-sql.js';
+import { designedTableSqlFiles } from '../common/designed-sql.js';
 import { dockerFiles } from '../common/docker.js';
 import { envExample } from '../common/env.js';
 import { readmeFile } from '../common/readme.js';
-import { kebabCase, routeName, selectedTables } from '../helpers.js';
+import { defaultOperations, kebabCase, routeName, selectedTables } from '../helpers.js';
 import {
   generateAuthMiddleware,
   generateAuthRoutesExpress,
@@ -73,15 +74,16 @@ function swaggerTs(config: GenerateConfig, tables: TableMeta[]): GeneratedFile {
 
   for (const table of tables) {
     const base = `/${routeName(table)}`;
-    paths[base] = {
-      get: { summary: `List ${table.name}`, responses: { '200': { description: 'OK' } } },
-      post: { summary: `Create ${table.name}`, responses: { '201': { description: 'Created' } } },
-    };
-    paths[`${base}/{id}`] = {
-      get: { summary: `Get ${table.name}`, responses: { '200': { description: 'OK' } } },
-      put: { summary: `Update ${table.name}`, responses: { '200': { description: 'OK' } } },
-      delete: { summary: `Delete ${table.name}`, responses: { '204': { description: 'Deleted' } } },
-    };
+    const ops = defaultOperations(table);
+    const collection: Record<string, unknown> = {};
+    const byId: Record<string, unknown> = {};
+    if (ops.list) collection.get = { summary: `List ${table.name}`, responses: { '200': { description: 'OK' } } };
+    if (ops.create) collection.post = { summary: `Create ${table.name}`, responses: { '201': { description: 'Created' } } };
+    if (ops.get) byId.get = { summary: `Get ${table.name}`, responses: { '200': { description: 'OK' } } };
+    if (ops.update) byId.put = { summary: `Update ${table.name}`, responses: { '200': { description: 'OK' } } };
+    if (ops.delete) byId.delete = { summary: `Delete ${table.name}`, responses: { '204': { description: 'Deleted' } } };
+    if (Object.keys(collection).length) paths[base] = collection;
+    if (Object.keys(byId).length) paths[`${base}/{id}`] = byId;
   }
 
   const spec = {
@@ -200,6 +202,7 @@ export function generateNodeExpress(config: GenerateConfig): GeneratedFile[] {
 
   const sql = authSqlFile(config);
   if (sql) files.push(sql);
+  files.push(...designedTableSqlFiles(config));
 
   files.push(...dockerFiles(config));
   return files;

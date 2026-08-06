@@ -1,11 +1,46 @@
-import type { ColumnMeta, GenerateConfig, TableMeta } from '@apiforge/shared';
+import type { ColumnMeta, GenerateConfig, TableMeta, TableOperations } from '@apiforge/shared';
+
+export const FULL_OPERATIONS: Required<TableOperations> = {
+  list: true,
+  get: true,
+  create: true,
+  update: true,
+  delete: true,
+};
+
+export const READ_OPERATIONS: Required<TableOperations> = {
+  list: true,
+  get: true,
+  create: false,
+  update: false,
+  delete: false,
+};
+
+export function defaultOperations(table: Pick<TableMeta, 'type' | 'operations'>): Required<TableOperations> {
+  const base = table.type === 'view' ? READ_OPERATIONS : FULL_OPERATIONS;
+  return {
+    list: table.operations?.list ?? base.list,
+    get: table.operations?.get ?? base.get,
+    create: table.operations?.create ?? base.create,
+    update: table.operations?.update ?? base.update,
+    delete: table.operations?.delete ?? base.delete,
+  };
+}
+
+export function hasAnyOperation(table: Pick<TableMeta, 'type' | 'operations'>): boolean {
+  const ops = defaultOperations(table);
+  return ops.list || ops.get || ops.create || ops.update || ops.delete;
+}
 
 /** Keep only tables/columns the user selected (undefined counts as selected). */
 export function selectedTables(config: GenerateConfig): TableMeta[] {
   return config.tables
     .filter((t) => t.selected !== false)
+    .filter((t) => hasAnyOperation(t))
     .map((t) => ({
       ...t,
+      source: t.source ?? 'introspected',
+      operations: defaultOperations(t),
       columns: selectedColumns(t),
     }))
     .filter((t) => t.columns.length > 0);

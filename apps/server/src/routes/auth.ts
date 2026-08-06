@@ -37,6 +37,17 @@ const tableMetaSchema = z.object({
   type: z.enum(['table', 'view']),
   columns: z.array(columnMetaSchema),
   selected: z.boolean().optional(),
+  source: z.enum(['introspected', 'designed']).optional(),
+  id: z.string().optional(),
+  operations: z
+    .object({
+      list: z.boolean().optional(),
+      get: z.boolean().optional(),
+      create: z.boolean().optional(),
+      update: z.boolean().optional(),
+      delete: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const detectBodySchema = z.union([

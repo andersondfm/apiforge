@@ -1,4 +1,5 @@
 import { StepNav } from '../components/StepNav';
+import { ExplainPanel } from '../components/ExplainPanel';
 import type { AuthConfig, DetectedAuthTable } from '../types';
 
 interface AuthStepProps {
@@ -52,6 +53,26 @@ export function AuthStep({ auth, detected, onChange, onBack, onNext }: AuthStepP
       <p className="mt-2 text-[var(--muted)]">
         Wire JWT auth from an existing users table, create one, or skip.
       </p>
+
+      <ExplainPanel title="Como funciona o JWT" defaultOpen>
+        <p>
+          Um <strong className="text-[var(--fg)]">JWT (JSON Web Token)</strong> é um “crachá”
+          digital. Depois do login, a API devolve um token; o cliente envia{' '}
+          <code className="mx-1 rounded bg-[var(--bg-soft)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--cyan)]">
+            Authorization: Bearer &lt;token&gt;
+          </code>{' '}
+          nas próximas requests.
+        </p>
+        <p>
+          O servidor valida a assinatura do token (com o JWT secret) e libera os endpoints
+          protegidos — sem guardar sessão no banco.
+        </p>
+        <p>
+          No Swagger, use o botão <strong className="text-[var(--fg)]">Authorize</strong> e cole o
+          token recebido em{' '}
+          <code className="font-mono text-[11px] text-[var(--cyan)]">/auth/login</code>.
+        </p>
+      </ExplainPanel>
 
       <div className="mt-8 space-y-3" role="radiogroup" aria-label="Auth mode">
         {detected.map((table) => {

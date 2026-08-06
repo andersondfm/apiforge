@@ -1,6 +1,7 @@
 import type { ColumnMeta, DbEngine, GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared';
 import {
   camelCase,
+  defaultOperations,
   insertableColumns,
   kebabCase,
   pascalCase,
@@ -13,61 +14,56 @@ import {
   updatableColumns,
 } from '../helpers.js';
 import { mapSqlToTs } from '../types-map.js';
+import { NODE_COMMON, NODE_DRIVERS, NODE_EXPRESS, NODE_FASTIFY } from '../versions.js';
 
-export function dbDriverPackage(engine: DbEngine): { dep: string; version: string; types?: string } {
-  switch (engine) {
-    case 'postgresql':
-      return { dep: 'pg', version: '^8.13.1', types: '@types/pg' };
-    case 'mysql':
-      return { dep: 'mysql2', version: '^3.12.0' };
-    case 'sqlserver':
-      return { dep: 'mssql', version: '^11.0.1' };
-    case 'sqlite':
-      return { dep: 'better-sqlite3', version: '^11.8.1', types: '@types/better-sqlite3' };
-    default:
-      throw new Error(`Unsupported engine: ${engine}`);
-  }
+export function dbDriverPackage(
+  engine: DbEngine,
+): { dep: string; version: string; types?: string; typesVersion?: string } {
+  const driver = NODE_DRIVERS[engine];
+  if (!driver) throw new Error(`Unsupported engine: ${engine}`);
+  return driver;
 }
 
 export function nodePackageJson(config: GenerateConfig, framework: 'express' | 'fastify'): GeneratedFile {
   const name = sanitizeProjectName(config.projectName).toLowerCase();
   const driver = dbDriverPackage(config.connection.engine);
   const deps: Record<string, string> = {
-    dotenv: '^16.4.7',
+    dotenv: NODE_COMMON.dotenv,
     [driver.dep]: driver.version,
   };
   const devDeps: Record<string, string> = {
-    typescript: '^5.8.2',
-    '@types/node': '^22.13.10',
-    tsx: '^4.19.3',
+    typescript: NODE_COMMON.typescript,
+    '@types/node': NODE_COMMON.typesNode,
+    tsx: NODE_COMMON.tsx,
   };
-  if (driver.types) devDeps[driver.types] = '*';
+  if (driver.types) {
+    devDeps[driver.types] = driver.typesVersion ?? '*';
+  }
 
   if (framework === 'express') {
-    deps.express = '^4.21.2';
-    deps.cors = '^2.8.5';
-    deps.helmet = '^8.0.0';
-    deps['express-rate-limit'] = '^7.5.0';
-    deps['swagger-ui-express'] = '^5.0.1';
-    deps['swagger-jsdoc'] = '^6.2.8';
-    devDeps['@types/express'] = '^4.17.21';
-    devDeps['@types/cors'] = '^2.8.17';
-    devDeps['@types/swagger-ui-express'] = '^4.1.8';
-    devDeps['@types/swagger-jsdoc'] = '^6.0.4';
+    deps.express = NODE_EXPRESS.express;
+    deps.cors = NODE_EXPRESS.cors;
+    deps.helmet = NODE_EXPRESS.helmet;
+    deps['express-rate-limit'] = NODE_EXPRESS.rateLimit;
+    deps['swagger-ui-express'] = NODE_EXPRESS.swaggerUi;
+    deps['swagger-jsdoc'] = NODE_EXPRESS.swaggerJsdoc;
+    devDeps['@types/express'] = NODE_EXPRESS.typesExpress;
+    devDeps['@types/cors'] = NODE_EXPRESS.typesCors;
+    devDeps['@types/swagger-ui-express'] = NODE_EXPRESS.typesSwaggerUi;
+    devDeps['@types/swagger-jsdoc'] = NODE_EXPRESS.typesSwaggerJsdoc;
   } else {
-    deps.fastify = '^5.2.1';
-    deps['@fastify/cors'] = '^10.0.2';
-    deps['@fastify/helmet'] = '^13.0.1';
-    deps['@fastify/rate-limit'] = '^10.2.2';
-    deps['@fastify/swagger'] = '^9.4.2';
-    deps['@fastify/swagger-ui'] = '^5.2.2';
+    deps.fastify = NODE_FASTIFY.fastify;
+    deps['@fastify/cors'] = NODE_FASTIFY.cors;
+    deps['@fastify/helmet'] = NODE_FASTIFY.helmet;
+    deps['@fastify/rate-limit'] = NODE_FASTIFY.rateLimit;
+    deps['@fastify/swagger'] = NODE_FASTIFY.swagger;
+    deps['@fastify/swagger-ui'] = NODE_FASTIFY.swaggerUi;
   }
 
   if (config.auth.enabled) {
-    deps.bcryptjs = '^2.4.3';
-    deps.jsonwebtoken = '^9.0.2';
-    devDeps['@types/bcryptjs'] = '^2.4.6';
-    devDeps['@types/jsonwebtoken'] = '^9.0.9';
+    deps.bcryptjs = NODE_COMMON.bcryptjs;
+    deps.jsonwebtoken = NODE_COMMON.jsonwebtoken;
+    devDeps['@types/jsonwebtoken'] = NODE_COMMON.typesJsonwebtoken;
   }
 
   const pkg = {
@@ -75,6 +71,7 @@ export function nodePackageJson(config: GenerateConfig, framework: 'express' | '
     version: '1.0.0',
     private: true,
     type: 'module',
+    engines: { node: NODE_COMMON.engines },
     scripts: {
       dev: 'tsx watch src/index.ts',
       build: 'tsc -p tsconfig.json',
@@ -106,7 +103,6 @@ export function nodeTsConfig(): GeneratedFile {
           esModuleInterop: true,
           skipLibCheck: true,
           resolveJsonModule: true,
-          declaration: true,
         },
         include: ['src/**/*'],
       },
@@ -283,6 +279,7 @@ export function generateTableRouteExpress(config: GenerateConfig, table: TableMe
   const qt = qualifiedTable(table, engine);
   const list = buildListSql(table, engine, config.includePagination);
   const authGuard = config.auth.enabled ? 'authenticate, ' : '';
+  const ops = defaultOperations(table);
 
   const insertCols = inserts.length ? inserts : cols.filter((c) => c.name !== pkName || !c.isIdentity);
   const insertNames = insertCols.map((c) => quoteIdent(c.name, engine)).join(', ');
@@ -409,7 +406,9 @@ ${interfaceFields}
 ${mapRow}
 
 const router = Router();
-
+${
+  ops.list
+    ? `
 /** List ${table.name} */
 router.get('/', ${authGuard}async (req, res, next) => {
   try {
@@ -418,7 +417,11 @@ ${listHandler}
     next(err);
   }
 });
-
+`
+    : ''
+}${
+  ops.get
+    ? `
 /** Get ${table.name} by id */
 router.get('/:id', ${authGuard}async (req, res, next) => {
   try {
@@ -433,7 +436,11 @@ router.get('/:id', ${authGuard}async (req, res, next) => {
     next(err);
   }
 });
-
+`
+    : ''
+}${
+  ops.create
+    ? `
 /** Create ${table.name} */
 router.post('/', ${authGuard}async (req, res, next) => {
   try {
@@ -443,7 +450,11 @@ ${createFetch}
     next(err);
   }
 });
-
+`
+    : ''
+}${
+  ops.update
+    ? `
 /** Update ${table.name} */
 router.put('/:id', ${authGuard}async (req, res, next) => {
   try {
@@ -463,7 +474,11 @@ router.put('/:id', ${authGuard}async (req, res, next) => {
     next(err);
   }
 });
-
+`
+    : ''
+}${
+  ops.delete
+    ? `
 /** Delete ${table.name} */
 router.delete('/:id', ${authGuard}async (req, res, next) => {
   try {
@@ -478,7 +493,9 @@ router.delete('/:id', ${authGuard}async (req, res, next) => {
     next(err);
   }
 });
-
+`
+    : ''
+}
 export default router;
 `;
 

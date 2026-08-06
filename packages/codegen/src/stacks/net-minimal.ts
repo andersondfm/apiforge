@@ -1,12 +1,14 @@
-import type { GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared';
+import { csharpNamespace, defaultOperations, pascalCase, selectedTables } from '../helpers.js';
+import { designedTableSqlFiles } from '../common/designed-sql.js';
 import { authSqlFile } from '../common/auth-sql.js';
 import { dockerFiles } from '../common/docker.js';
 import { envExample } from '../common/env.js';
 import { readmeFile } from '../common/readme.js';
-import { csharpNamespace, pascalCase, selectedTables } from '../helpers.js';
+import type { GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared';
 import {
   appsettingsFiles,
   applyCorsSnippet,
+  csharpSqlLiteral,
   csprojFile,
   generateAuthService,
   generateDbFactory,
@@ -15,6 +17,8 @@ import {
   generateSecurityMiddlewareCs,
   jwtSetupSnippet,
   netPort,
+  swaggerMiddlewareSnippet,
+  swaggerServicesSnippet,
 } from './net-shared.js';
 
 function generateEndpointFile(config: GenerateConfig, table: TableMeta): GeneratedFile {
@@ -22,20 +26,71 @@ function generateEndpointFile(config: GenerateConfig, table: TableMeta): Generat
   const h = generateEntitySqlHelpers(config.connection.engine, table);
   const authAttr = config.auth.enabled ? '\n        .RequireAuthorization()' : '';
   const pagination = config.includePagination;
+  const ops = defaultOperations(table);
 
   const listBody = pagination
     ? `            var page = Math.Max(1, pageQuery ?? 1);
             var limit = Math.Clamp(limitQuery ?? 20, 1, 100);
             var offset = (page - 1) * limit;
             await using var conn = await db.OpenConnectionAsync();
-            var total = await conn.ExecuteScalarAsync<long>(@"${h.countSql}");
+            var total = await conn.ExecuteScalarAsync<long>(${csharpSqlLiteral(h.countSql)});
             var rows = (await conn.QueryAsync<${h.entity}>(
-                @"${h.pagedSql}",
+                ${csharpSqlLiteral(h.pagedSql)},
                 new { Limit = limit, Offset = offset })).ToList();
             return Results.Ok(new { data = rows, page, limit, total, totalPages = (int)Math.Ceiling(total / (double)limit) });`
     : `            await using var conn = await db.OpenConnectionAsync();
-            var rows = (await conn.QueryAsync<${h.entity}>(@"${h.listSql}")).ToList();
+            var rows = (await conn.QueryAsync<${h.entity}>(${csharpSqlLiteral(h.listSql)})).ToList();
             return Results.Ok(new { data = rows });`;
+
+  const handlers = [
+    ops.list
+      ? `
+        group.MapGet("/", async (IDbFactory db${pagination ? ', [FromQuery] int? pageQuery, [FromQuery] int? limitQuery' : ''}) =>
+        {
+${listBody}
+        });`
+      : '',
+    ops.get
+      ? `
+        group.MapGet("/{id}", async (string id, IDbFactory db) =>
+        {
+            await using var conn = await db.OpenConnectionAsync();
+            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+            return row is null ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.Ok(row);
+        });`
+      : '',
+    ops.create
+      ? `
+        group.MapPost("/", async (${h.entity} body, IDbFactory db) =>
+        {
+            await using var conn = await db.OpenConnectionAsync();
+            await conn.ExecuteAsync(${csharpSqlLiteral(h.insertSql)}, body);
+            return Results.Created($"/${h.route}", body);
+        });`
+      : '',
+    ops.update
+      ? `
+        group.MapPut("/{id}", async (string id, ${h.entity} body, IDbFactory db) =>
+        {
+            await using var conn = await db.OpenConnectionAsync();
+            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.updateSql)}, new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = id });
+            if (affected == 0) return Results.NotFound(new { error = "${h.entity} not found" });
+            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+            return Results.Ok(row);
+        });`
+      : '',
+    ops.delete
+      ? `
+        group.MapDelete("/{id}", async (string id, IDbFactory db) =>
+        {
+            await using var conn = await db.OpenConnectionAsync();
+            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.deleteSql)}, new { Id = id });
+            return affected == 0 ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.NoContent();
+        });`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return {
     path: `Endpoints/${h.entity}Endpoints.cs`,
@@ -52,41 +107,7 @@ public static class ${h.entity}Endpoints
     {
         var group = app.MapGroup("/${h.route}")
             .WithTags("${h.entity}")${authAttr};
-
-        group.MapGet("/", async (IDbFactory db${pagination ? ', [FromQuery] int? pageQuery, [FromQuery] int? limitQuery' : ''}) =>
-        {
-${listBody}
-        });
-
-        group.MapGet("/{id}", async (string id, IDbFactory db) =>
-        {
-            await using var conn = await db.OpenConnectionAsync();
-            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(@"${h.getSql}", new { Id = id });
-            return row is null ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.Ok(row);
-        });
-
-        group.MapPost("/", async (${h.entity} body, IDbFactory db) =>
-        {
-            await using var conn = await db.OpenConnectionAsync();
-            await conn.ExecuteAsync(@"${h.insertSql}", body);
-            return Results.Created($"/${h.route}", body);
-        });
-
-        group.MapPut("/{id}", async (string id, ${h.entity} body, IDbFactory db) =>
-        {
-            await using var conn = await db.OpenConnectionAsync();
-            var affected = await conn.ExecuteAsync(@"${h.updateSql}", new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = id });
-            if (affected == 0) return Results.NotFound(new { error = "${h.entity} not found" });
-            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(@"${h.getSql}", new { Id = id });
-            return Results.Ok(row);
-        });
-
-        group.MapDelete("/{id}", async (string id, IDbFactory db) =>
-        {
-            await using var conn = await db.OpenConnectionAsync();
-            var affected = await conn.ExecuteAsync(@"${h.deleteSql}", new { Id = id });
-            return affected == 0 ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.NoContent();
-        });
+${handlers}
 
         return group;
     }
@@ -125,7 +146,7 @@ ${
     path: 'Program.cs',
     content: `using ${ns}.Data;
 using ${ns}.Middleware;
-${tables.length ? `using ${ns}.Endpoints;\n` : ''}${config.auth.enabled ? `using ${ns}.Auth;\n` : ''}using Microsoft.OpenApi.Models;
+${tables.length ? `using ${ns}.Endpoints;\n` : ''}${config.auth.enabled ? `using ${ns}.Auth;\n` : ''}using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["Urls"] ?? "http://localhost:${port}");
@@ -133,35 +154,7 @@ builder.WebHost.UseUrls(builder.Configuration["Urls"] ?? "http://localhost:${por
 builder.Services.AddSingleton<IDbFactory, DbFactory>();
 ${applyCorsSnippet(config)}
 ${jwtSetupSnippet(config)}
-${config.includeSwagger ? `builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "${config.projectName}", Version = "v1" });
-${
-  config.auth.enabled
-    ? `    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme.",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
-    });`
-    : ''
-}
-});
-` : ''}
+${swaggerServicesSnippet(config)}
 var app = builder.Build();
 
 app.UseMiddleware<IpAllowlistMiddleware>();
@@ -174,13 +167,7 @@ if (builder.Configuration.GetValue("Security:CorsMode", "origins") != "disabled"
 }
 
 ${config.auth.enabled ? 'app.UseAuthentication();\napp.UseAuthorization();\n' : ''}
-${
-  config.includeSwagger
-    ? `app.UseSwagger();
-app.UseSwaggerUI();
-`
-    : ''
-}
+${swaggerMiddlewareSnippet(config)}
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "${config.projectName}" }));
 ${authEndpoints}
 ${mapCalls}
@@ -212,6 +199,7 @@ export function generateNetMinimal(config: GenerateConfig): GeneratedFile[] {
 
   const sql = authSqlFile(config);
   if (sql) files.push(sql);
+  files.push(...designedTableSqlFiles(config));
 
   files.push(...dockerFiles(config));
   return files;

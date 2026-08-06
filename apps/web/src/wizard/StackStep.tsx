@@ -10,10 +10,10 @@ interface StackStepProps {
 }
 
 const STACKS: { id: GeneratedStack; blurb: string }[] = [
-  { id: 'net-minimal', blurb: 'Lean .NET 8 endpoints, minimal ceremony' },
+  { id: 'net-minimal', blurb: 'Lean .NET 10 endpoints, minimal ceremony' },
   { id: 'net-webapi', blurb: 'Controllers, filters, classic Web API shape' },
-  { id: 'node-express', blurb: 'Battle-tested Express with typed routes' },
-  { id: 'node-fastify', blurb: 'High-throughput Fastify with schema hooks' },
+  { id: 'node-express', blurb: 'Express 5 with typed routes and Swagger' },
+  { id: 'node-fastify', blurb: 'High-throughput Fastify 5 with schema hooks' },
 ];
 
 export function StackStep({ config, onChange, onBack, onNext }: StackStepProps) {
