@@ -17,4 +17,6 @@ coverage/
 *.zip
 .vite/
 .tmp-smoke-*/
+.e2e-work/
+scripts/e2e/last-report.json
 

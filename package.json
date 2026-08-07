@@ -12,7 +12,9 @@
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @apiforge/server\" \"npm run dev -w @apiforge/web\"",
     "build": "npm run build -w @apiforge/shared && npm run build -w @apiforge/db-introspect && npm run build -w @apiforge/codegen && npm run build -w @apiforge/server && npm run build -w @apiforge/web",
     "typecheck": "npm run build -w @apiforge/shared && npm run build -w @apiforge/db-introspect && npm run build -w @apiforge/codegen && npm run typecheck -w @apiforge/shared && npm run typecheck -w @apiforge/db-introspect && npm run typecheck -w @apiforge/codegen && npm run typecheck -w @apiforge/server && npm run typecheck -w @apiforge/web",
-    "lint": "npm run typecheck"
+    "lint": "npm run typecheck",
+    "ensure:dbs": "node scripts/ensure-dbs.mjs",
+    "test:e2e": "node scripts/e2e/run.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

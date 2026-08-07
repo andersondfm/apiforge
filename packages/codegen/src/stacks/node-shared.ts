@@ -159,12 +159,12 @@ export async function query<T = Record<string, unknown>>(
 ): Promise<{ rows: T[]; rowCount: number }> {
   // Use query() (text protocol), not execute(): prepared LIMIT/OFFSET ? fails on MySQL
   // with "Incorrect arguments to mysqld_stmt_execute".
-  const [rows, meta] = await pool.query(text, params);
-  const list = Array.isArray(rows) ? (rows as T[]) : [];
-  const rowCount = typeof meta === 'object' && meta && 'affectedRows' in meta
-    ? Number((meta as { affectedRows: number }).affectedRows)
-    : list.length;
-  return { rows: list, rowCount };
+  const [result] = await pool.query(text, params);
+  if (Array.isArray(result)) {
+    return { rows: result as T[], rowCount: result.length };
+  }
+  const header = result as { affectedRows?: number };
+  return { rows: [] as T[], rowCount: Number(header.affectedRows ?? 0) };
 }
 
 export default pool;

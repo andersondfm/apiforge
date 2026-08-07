@@ -8,6 +8,7 @@ import type { GenerateConfig, GeneratedFile, TableMeta } from '@apiforge/shared'
 import {
   appsettingsFiles,
   applyCorsSnippet,
+  csharpIdValInit,
   csharpSqlLiteral,
   csprojFile,
   generateAuthService,
@@ -54,8 +55,9 @@ ${listBody}
       ? `
         group.MapGet("/{id}", async (string id, IDbFactory db) =>
         {
+            ${csharpIdValInit('id')}
             await using var conn = await db.OpenConnectionAsync();
-            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = idVal });
             return row is null ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.Ok(row);
         });`
       : '',
@@ -72,10 +74,11 @@ ${listBody}
       ? `
         group.MapPut("/{id}", async (string id, ${h.entity} body, IDbFactory db) =>
         {
+            ${csharpIdValInit('id')}
             await using var conn = await db.OpenConnectionAsync();
-            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.updateSql)}, new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = id });
+            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.updateSql)}, new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = idVal });
             if (affected == 0) return Results.NotFound(new { error = "${h.entity} not found" });
-            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+            var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = idVal });
             return Results.Ok(row);
         });`
       : '',
@@ -83,8 +86,9 @@ ${listBody}
       ? `
         group.MapDelete("/{id}", async (string id, IDbFactory db) =>
         {
+            ${csharpIdValInit('id')}
             await using var conn = await db.OpenConnectionAsync();
-            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.deleteSql)}, new { Id = id });
+            var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.deleteSql)}, new { Id = idVal });
             return affected == 0 ? Results.NotFound(new { error = "${h.entity} not found" }) : Results.NoContent();
         });`
       : '',
@@ -156,6 +160,8 @@ ${applyCorsSnippet(config)}
 ${jwtSetupSnippet(config)}
 ${swaggerServicesSnippet(config)}
 var app = builder.Build();
+
+Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 app.UseMiddleware<IpAllowlistMiddleware>();
 app.UseMiddleware<SimpleRateLimitMiddleware>();

@@ -19,6 +19,11 @@ export function csharpSqlLiteral(sql: string): string {
   return `@"${sql.replaceAll('"', '""')}"`;
 }
 
+/** Local var init: coerce route id to long when numeric (PostgreSQL int PKs). */
+export function csharpIdValInit(varName = 'id'): string {
+  return `var idVal = long.TryParse(${varName}, out var __idNum) ? (object)__idNum : ${varName};`;
+}
+
 export function netPort(config: GenerateConfig): number {
   return config.port || 5080;
 }

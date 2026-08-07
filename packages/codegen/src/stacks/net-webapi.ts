@@ -8,6 +8,7 @@ import { csharpNamespace, defaultOperations, pascalCase, selectedTables } from '
 import {
   appsettingsFiles,
   applyCorsSnippet,
+  csharpIdValInit,
   csharpSqlLiteral,
   csprojFile,
   generateAuthService,
@@ -57,8 +58,9 @@ function generateController(config: GenerateConfig, table: TableMeta): Generated
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(string id)
     {
+        ${csharpIdValInit('id')}
         await using var conn = await _db.OpenConnectionAsync();
-        var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+        var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = idVal });
         if (row is null) return NotFound(new { error = "${h.entity} not found" });
         return Ok(row);
     }`
@@ -80,10 +82,11 @@ function generateController(config: GenerateConfig, table: TableMeta): Generated
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, [FromBody] ${h.entity} body)
     {
+        ${csharpIdValInit('id')}
         await using var conn = await _db.OpenConnectionAsync();
-        var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.updateSql)}, new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = id });
+        var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.updateSql)}, new { ${h.updates.map((c) => `${pascalCase(c.name)} = body.${pascalCase(c.name)}`).join(', ')}, Id = idVal });
         if (affected == 0) return NotFound(new { error = "${h.entity} not found" });
-        var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = id });
+        var row = await conn.QuerySingleOrDefaultAsync<${h.entity}>(${csharpSqlLiteral(h.getSql)}, new { Id = idVal });
         return Ok(row);
     }`
     : '';
@@ -93,8 +96,9 @@ function generateController(config: GenerateConfig, table: TableMeta): Generated
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
+        ${csharpIdValInit('id')}
         await using var conn = await _db.OpenConnectionAsync();
-        var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.deleteSql)}, new { Id = id });
+        var affected = await conn.ExecuteAsync(${csharpSqlLiteral(h.deleteSql)}, new { Id = idVal });
         if (affected == 0) return NotFound(new { error = "${h.entity} not found" });
         return NoContent();
     }`
@@ -193,6 +197,8 @@ ${applyCorsSnippet(config)}
 ${jwtSetupSnippet(config)}
 ${swaggerServicesSnippet(config)}
 var app = builder.Build();
+
+Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 app.UseMiddleware<IpAllowlistMiddleware>();
 app.UseMiddleware<SimpleRateLimitMiddleware>();
