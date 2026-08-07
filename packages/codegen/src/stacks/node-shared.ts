@@ -11,6 +11,7 @@ import {
   quoteIdent,
   routeName,
   sanitizeProjectName,
+  tsSqlLiteral,
   updatableColumns,
 } from '../helpers.js';
 import { mapSqlToTs } from '../types-map.js';
@@ -156,7 +157,9 @@ export async function query<T = Record<string, unknown>>(
   text: string,
   params: unknown[] = [],
 ): Promise<{ rows: T[]; rowCount: number }> {
-  const [rows, meta] = await pool.execute(text, params);
+  // Use query() (text protocol), not execute(): prepared LIMIT/OFFSET ? fails on MySQL
+  // with "Incorrect arguments to mysqld_stmt_execute".
+  const [rows, meta] = await pool.query(text, params);
   const list = Array.isArray(rows) ? (rows as T[]) : [];
   const rowCount = typeof meta === 'object' && meta && 'affectedRows' in meta
     ? Number((meta as { affectedRows: number }).affectedRows)
@@ -360,9 +363,9 @@ ${pubs.map((c) => `    ${camelCase(c.name)}: row['${c.name}'] as ${mapSqlToTs(c.
     ? `  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
   const offset = (page - 1) * limit;
-  const countResult = await query<{ total: number | string }>(\`${list.countSql}\`, ${countParamsExpr});
+  const countResult = await query<{ total: number | string }>(${tsSqlLiteral(list.countSql)}, ${countParamsExpr});
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = await query(\`${list.sql}\`, ${listParamsExpr});
+  const result = await query(${tsSqlLiteral(list.sql)}, ${listParamsExpr});
   res.json({
     data: result.rows.map((r) => mapRow(r as Record<string, unknown>)),
     page,
@@ -370,8 +373,7 @@ ${pubs.map((c) => `    ${camelCase(c.name)}: row['${c.name}'] as ${mapSqlToTs(c.
     total,
     totalPages: Math.ceil(total / limit) || 1,
   });`
-    : `  const result = await query(\`${list.sql.replace(/ LIMIT.*$/, '').replace(/ ORDER BY 1 OFFSET.*$/, '')}\`, ${engine === 'sqlserver' ? '{}' : '[]'});
-  res.json({ data: result.rows.map((r) => mapRow(r as Record<string, unknown>)) });`;
+    : '';
 
   // Fix list SQL for non-pagination case in the string above - better to handle cleanly
   const listHandler = config.includePagination
@@ -379,22 +381,25 @@ ${pubs.map((c) => `    ${camelCase(c.name)}: row['${c.name}'] as ${mapSqlToTs(c.
     : (() => {
         const simpleSql = `SELECT ${colSelectList(pubs, engine)} FROM ${qt}`;
         const params = engine === 'sqlserver' ? '{}' : '[]';
-        return `  const result = await query(\`${simpleSql}\`, ${params});
+        return `  const result = await query(${tsSqlLiteral(simpleSql)}, ${params});
   res.json({ data: result.rows.map((r) => mapRow(r as Record<string, unknown>)) });`;
       })();
 
+  const insertSqlFull = `INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})${returning}`;
   const createFetch =
     engine === 'postgresql'
       ? `  const result = await query(
-    \`INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})${returning}\`,
+    ${tsSqlLiteral(insertSqlFull)},
     ${insertParamsExpr},
   );
   res.status(201).json(mapRow(result.rows[0] as Record<string, unknown>));`
       : `  const result = await query(
-    \`INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})\`,
+    ${tsSqlLiteral(`INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})`)},
     ${insertParamsExpr},
   );
   res.status(201).json({ ok: true, affected: result.rowCount });`;
+
+  const updateSqlFull = `UPDATE ${qt} SET ${updateSet} WHERE ${updateWhere}`;
 
   const content = `import { Router } from 'express';
 import { query } from '../db.js';
@@ -426,7 +431,7 @@ ${listHandler}
 router.get('/:id', ${authGuard}async (req, res, next) => {
   try {
     const id = req.params.id;
-    const result = await query(\`${getByIdSql}\`, ${getByIdParams});
+    const result = await query(${tsSqlLiteral(getByIdSql)}, ${getByIdParams});
     if (!result.rows.length) {
       res.status(404).json({ error: '${entity} not found' });
       return;
@@ -461,14 +466,14 @@ router.put('/:id', ${authGuard}async (req, res, next) => {
     const id = req.params.id;
     const body = req.body as Partial<${entity}>;
     const result = await query(
-      \`UPDATE ${qt} SET ${updateSet} WHERE ${updateWhere}\`,
+      ${tsSqlLiteral(updateSqlFull)},
       ${updateParamsExpr},
     );
     if (!result.rowCount) {
       res.status(404).json({ error: '${entity} not found' });
       return;
     }
-    const fresh = await query(\`${getByIdSql}\`, ${getByIdParams});
+    const fresh = await query(${tsSqlLiteral(getByIdSql)}, ${getByIdParams});
     res.json(fresh.rows[0] ? mapRow(fresh.rows[0] as Record<string, unknown>) : { ok: true });
   } catch (err) {
     next(err);
@@ -483,7 +488,7 @@ router.put('/:id', ${authGuard}async (req, res, next) => {
 router.delete('/:id', ${authGuard}async (req, res, next) => {
   try {
     const id = req.params.id;
-    const result = await query(\`${deleteSql}\`, ${deleteParams});
+    const result = await query(${tsSqlLiteral(deleteSql)}, ${deleteParams});
     if (!result.rowCount) {
       res.status(404).json({ error: '${entity} not found' });
       return;
@@ -686,13 +691,13 @@ router.post('/register', async (req, res, next) => {
       res.status(400).json({ error: 'username and password are required' });
       return;
     }
-    const existing = await query(\`${findSql}\`, ${findParams});
+    const existing = await query(${tsSqlLiteral(findSql)}, ${findParams});
     if (existing.rows.length) {
       res.status(409).json({ error: 'Username already taken' });
       return;
     }
     const hash = await bcrypt.hash(password, 10);
-    const result = await query(\`${insertSql}\`, ${insertParams});
+    const result = await query(${tsSqlLiteral(insertSql)}, ${insertParams});
     const id = (result.rows[0] as { id?: string | number } | undefined)?.id ?? 'new';
     const token = signToken({ sub: id, username });
     res.status(201).json({ token, user: { id, username } });
@@ -720,7 +725,7 @@ router.post('/login', async (req, res, next) => {
       return;
     }
     const result = await query<{ id: string | number; username: string; password: string }>(
-      \`${findSql}\`,
+      ${tsSqlLiteral(findSql)},
       ${findParams},
     );
     const user = result.rows[0];

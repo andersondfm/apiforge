@@ -16,6 +16,7 @@ import {
   quoteIdent,
   routeName,
   selectedTables,
+  tsSqlLiteral,
   updatableColumns,
 } from '../helpers.js';
 import { mapSqlToTs } from '../types-map.js';
@@ -180,12 +181,12 @@ function generateAuthRoutesFastify(config: GenerateConfig): GeneratedFile {
       return reply.status(400).send({ error: 'username and password are required' });
     }
     const { username, password } = body;
-    const existing = await query(\`${findSql}\`, ${findParams});
+    const existing = await query(${tsSqlLiteral(findSql)}, ${findParams});
     if (existing.rows.length) {
       return reply.status(409).send({ error: 'Username already taken' });
     }
     const hash = await bcrypt.hash(password, 10);
-    const result = await query(\`${insertSql}\`, ${insertParams});
+    const result = await query(${tsSqlLiteral(insertSql)}, ${insertParams});
     const id = (result.rows[0] as { id?: string | number } | undefined)?.id ?? 'new';
     const token = app.signToken({ sub: id, username });
     return reply.status(201).send({ token, user: { id, username } });
@@ -207,7 +208,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     }
     const { username, password } = body;
     const result = await query<{ id: string | number; username: string; password: string }>(
-      \`${findSql}\`,
+      ${tsSqlLiteral(findSql)},
       ${findParams},
     );
     const user = result.rows[0];
@@ -314,9 +315,9 @@ function generateTableRouteFastify(config: GenerateConfig, table: TableMeta): Ge
     ? `    const page = Math.max(1, Number((request.query as { page?: string }).page) || 1);
     const limit = Math.min(100, Math.max(1, Number((request.query as { limit?: string }).limit) || 20));
     const offset = (page - 1) * limit;
-    const countResult = await query<{ total: number | string }>(\`SELECT COUNT(*) AS total FROM ${qt}\`, ${countParams});
+    const countResult = await query<{ total: number | string }>(${tsSqlLiteral(`SELECT COUNT(*) AS total FROM ${qt}`)}, ${countParams});
     const total = Number(countResult.rows[0]?.total ?? 0);
-    const result = await query(\`${listSql}\`, ${listParams});
+    const result = await query(${tsSqlLiteral(listSql)}, ${listParams});
     return {
       data: result.rows.map((r) => mapRow(r as Record<string, unknown>)),
       page,
@@ -324,18 +325,22 @@ function generateTableRouteFastify(config: GenerateConfig, table: TableMeta): Ge
       total,
       totalPages: Math.ceil(total / limit) || 1,
     };`
-    : `    const result = await query(\`${listSql}\`, ${listParams});
+    : `    const result = await query(${tsSqlLiteral(listSql)}, ${listParams});
     return { data: result.rows.map((r) => mapRow(r as Record<string, unknown>)) };`;
+
+  const insertSqlPg = `INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})${returning}`;
+  const insertSqlOther = `INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})`;
+  const updateSqlFull = `UPDATE ${qt} SET ${updateSet} WHERE ${updateWhere}`;
 
   const createHandler =
     engine === 'postgresql'
       ? `    const result = await query(
-      \`INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})${returning}\`,
+      ${tsSqlLiteral(insertSqlPg)},
       ${insertParamsExpr},
     );
     return reply.status(201).send(mapRow(result.rows[0] as Record<string, unknown>));`
       : `    const result = await query(
-      \`INSERT INTO ${qt} (${insertNames}) VALUES (${insertPlaceholders})\`,
+      ${tsSqlLiteral(insertSqlOther)},
       ${insertParamsExpr},
     );
     return reply.status(201).send({ ok: true, affected: result.rowCount });`;
@@ -367,7 +372,7 @@ ${listHandler}
   ops.get
     ? `  app.get<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
     const id = request.params.id;
-    const result = await query(\`${getByIdSql}\`, ${getByIdParams});
+    const result = await query(${tsSqlLiteral(getByIdSql)}, ${getByIdParams});
     if (!result.rows.length) {
       return reply.status(404).send({ error: '${entity} not found' });
     }
@@ -389,13 +394,13 @@ ${createHandler}
     const id = request.params.id;
     const body = request.body as Partial<${entity}>;
     const result = await query(
-      \`UPDATE ${qt} SET ${updateSet} WHERE ${updateWhere}\`,
+      ${tsSqlLiteral(updateSqlFull)},
       ${updateParamsExpr},
     );
     if (!result.rowCount) {
       return reply.status(404).send({ error: '${entity} not found' });
     }
-    const fresh = await query(\`${getByIdSql}\`, ${getByIdParams});
+    const fresh = await query(${tsSqlLiteral(getByIdSql)}, ${getByIdParams});
     return fresh.rows[0] ? mapRow(fresh.rows[0] as Record<string, unknown>) : { ok: true };
   });
 `
@@ -404,7 +409,7 @@ ${createHandler}
   ops.delete
     ? `  app.delete<{ Params: { id: string } }>('/:id', ${preHandler}, async (request, reply) => {
     const id = request.params.id;
-    const result = await query(\`${deleteSql}\`, ${deleteParams});
+    const result = await query(${tsSqlLiteral(deleteSql)}, ${deleteParams});
     if (!result.rowCount) {
       return reply.status(404).send({ error: '${entity} not found' });
     }

@@ -83,8 +83,9 @@ export function pluralize(s: string): string {
   const lower = s.toLowerCase();
   if (lower.endsWith('ies')) return s;
   if (lower.endsWith('y') && !/[aeiou]y$/i.test(s)) return s.slice(0, -1) + 'ies';
-  if (/(s|x|z|ch|sh)$/i.test(s)) return `${s}es`;
+  // Table names are usually already plural (products, users) — don't make "productses".
   if (lower.endsWith('s')) return s;
+  if (/(x|z|ch|sh)$/i.test(s)) return `${s}es`;
   return `${s}s`;
 }
 
@@ -144,6 +145,11 @@ export function quoteIdent(name: string, engine: GenerateConfig['connection']['e
     default:
       return `"${name}"`;
   }
+}
+
+/** Embed SQL in generated TypeScript without breaking on MySQL backticks. */
+export function tsSqlLiteral(sql: string): string {
+  return JSON.stringify(sql);
 }
 
 export function paramPlaceholder(
